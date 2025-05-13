@@ -617,7 +617,6 @@ class MZIBlockConv2d(ONNBaseLayer):
     weight: Tensor
     bias: Optional[Tensor]
     miniblock: int
-    dtype: torch.dtype
 
     def __init__(
         self,
@@ -630,7 +629,6 @@ class MZIBlockConv2d(ONNBaseLayer):
         groups: int = 1,
         bias: bool = True,
         miniblock: int = 4,
-        dtype: torch.dtype = torch.float64,
         mode: str = "weight",
         decompose_alg="clements",
         photodetect: bool = True,
@@ -655,7 +653,6 @@ class MZIBlockConv2d(ONNBaseLayer):
         self.grid_dim_y = int(np.ceil(self.out_channels / miniblock))
         self.in_channels_pad = self.grid_dim_x * miniblock
         self.out_channels_pad = self.grid_dim_y * miniblock
-        self.dtype = dtype
 
         self.v_max = 10.8
         self.v_pi = 4.36
@@ -734,10 +731,11 @@ class MZIBlockConv2d(ONNBaseLayer):
 
     def build_parameters(self, mode: str = "weight") -> None:
         ## weight mode
-        weight = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
-        U = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
-        S = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock), dtype=self.dtype).to(self.device)
-        V = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
+        weight = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
+        ## usv mode
+        U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
+        S = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock).to(self.device)
+        V = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
         ## phase mode
         delta_list_U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock).to(self.device)
         phase_U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock * (self.miniblock - 1) // 2).to(

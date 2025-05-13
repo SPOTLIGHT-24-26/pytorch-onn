@@ -529,6 +529,7 @@ class MZIBlockLinear(ONNBaseLayer):
     out_features: int
     miniblock: int
     weight: Tensor
+    dtype: torch.dtype
 
     def __init__(
         self,
@@ -536,6 +537,7 @@ class MZIBlockLinear(ONNBaseLayer):
         out_features: int,
         bias: bool = False,
         miniblock: int = 4,
+        dtype: torch.dtype = torch.float64,
         mode: str = "weight",
         decompose_alg: str = "clements",
         photodetect: bool = True,
@@ -544,6 +546,7 @@ class MZIBlockLinear(ONNBaseLayer):
         super(MZIBlockLinear, self).__init__(device=device)
         self.in_features = in_features
         self.out_features = out_features
+        self.dtype = dtype
         self.miniblock = miniblock
         self.grid_dim_x = int(np.ceil(self.in_features / miniblock))
         self.grid_dim_y = int(np.ceil(self.out_features / miniblock))
@@ -622,7 +625,7 @@ class MZIBlockLinear(ONNBaseLayer):
         self.set_crosstalk_factor(0)
 
         if bias:
-            self.bias = Parameter(torch.Tensor(out_features).to(self.device))
+            self.bias = Parameter(torch.zeros(out_features, dtype=self.dtype).to(self.device))
         else:
             self.register_parameter("bias", None)
 
@@ -630,11 +633,11 @@ class MZIBlockLinear(ONNBaseLayer):
 
     def build_parameters(self, mode: str = "weight") -> None:
         ## weight mode
-        weight = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
+        weight = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
         ## usv mode
-        U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
-        S = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock).to(self.device)
-        V = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock).to(self.device)
+        U = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
+        S = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock), dtype=self.dtype).to(self.device)
+        V = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
         ## phase mode
         delta_list_U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock).to(self.device)
         phase_U = torch.Tensor(self.grid_dim_y, self.grid_dim_x, self.miniblock * (self.miniblock - 1) // 2).to(

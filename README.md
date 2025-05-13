@@ -1,3 +1,18 @@
+<h1><p align="center">Torch-ONN-Complex</p></h1>
+This is a modified version of the original <a href="https://github.com/JeremieMelo/pytorch-onn">torch-onn</a> package. Currently the following layers support complex-valued weights:<br/>
+1. MZIBlockConv2D<br/>
+2. MZIBlockLinear
+
+#### Added Features
+- MZIfConv2D: supports provides an interface to add Fourier Convolution layers with complex-valued weights
+- Activations: complex-valued activation functions:
+  - Complex Relu
+  - <a href="https://github.com/fancompute/electro-optic-activation">Opto-electric</a> activations
+- PhaseShifterLayer: A layer of simple phase shifters with complex-valued weights
+
+<br/>
+<br/>
+
 <p align="center">
 <img src="torchonn_logo.jpg" alt="torchonn Logo" width="450">
 </p>

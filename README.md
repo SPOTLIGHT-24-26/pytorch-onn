@@ -7,7 +7,19 @@ This is a modified version of the original <a href="https://github.com/JeremieMe
 - MZIfConv2D: supports provides an interface to add Fourier Convolution layers with complex-valued weights
 - Activations: complex-valued activation functions:
   - Complex Relu
-  - <a href="https://github.com/fancompute/electro-optic-activation">Opto-electric</a> activations
+  - <a href="https://github.com/fancompute/electro-optic-activation">electro-optic</a> activations
+      - ```
+        @article{williamson2019reprogrammable,
+            title={Reprogrammable electro-optic nonlinear activation functions for optical neural networks},
+            author={Williamson, Ian AD and Hughes, Tyler W and Minkov, Momchil and Bartlett, Ben and Pai, Sunil and Fan, Shanhui},
+            journal={IEEE Journal of Selected Topics in Quantum Electronics},
+            volume={26},
+            number={1},
+            pages={1--12},
+            year={2019},
+            publisher={IEEE}
+          }
+        ```
 - PhaseShifterLayer: A layer of simple phase shifters with complex-valued weights
 
 <br/>

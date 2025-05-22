@@ -133,20 +133,6 @@ class FourierConv2d(ONNBaseLayer):
         # weight mode [out_channels, in_channels, pool_size[0], pool_size[1]]
         weight = torch.zeros((self.out_channels, self.in_channels, self.pool_size[0], 
                               self.pool_size[1]), dtype=self.dtype).to(self.device)
-        # index ranges of kernel (only initialize the kernel size in the center to preserve zeros for padding)
-        # startIdx = (int(np.ceil((self.pool_size[0]-self.kernel_size[0])/2)),
-        #                 int(np.ceil((self.pool_size[1]-self.kernel_size[1])/2)))
-        # endIdx = (startIdx[0] + self.kernel_size[0], startIdx[1] + self.kernel_size[1])
-        # # documentation specifies that initialization is done assuming weight is used as (x @ w.T)
-        # # So, transpose the initialized kernels
-        # init.kaiming_normal_(weight[:,:,startIdx[0]:endIdx[0], startIdx[1]:endIdx[1]])
-        # weight = torch.transpose(weight, 2, 3)
-        # # Take fourier transform of the kernel
-        # weight = torch.fft.fftshift(
-        #         torch.fft.fft2(
-        #             torch.fft.ifftshift(weight, dim=(-2,-1))), dim=(-2,-1))
-        # Normalize the fourier samples
-        #weight = self.complex_norm_polar(weight, 1.0)
 
         #weight = torch.empty((self.out_channels, self.in_channels, self.kernel_size[0], 
         #                      self.kernel_size[1]), dtype=self.dtype).to(self.device)
@@ -192,20 +178,6 @@ class FourierConv2d(ONNBaseLayer):
 
     def reset_parameters(self) -> None:
         if self.mode == "weight":
-            # weight is declared as a constant, so extra processing is needed to operate on underlying tensor (weight.data)
-            # startIdx = (int(np.ceil((self.pool_size[0]-self.kernel_size[0])/2)),
-            #             int(np.ceil((self.pool_size[1]-self.kernel_size[1])/2)))
-            # endIdx = (startIdx[0] + self.kernel_size[0], startIdx[1] + self.kernel_size[1])
-            # weight = torch.zeros((self.out_channels, self.in_channels, self.pool_size[0], 
-            #                   self.pool_size[1]), dtype=self.dtype).to(self.device)
-            # init.kaiming_normal_(weight[:,:,startIdx[0]:endIdx[0], startIdx[1]:endIdx[1]])
-            # weight = torch.transpose(weight, 2, 3)
-            # weight = torch.fft.fftshift(
-            #     torch.fft.fft2(
-            #         torch.fft.ifftshift(weight, dim=(-2,-1))), dim=(-2,-1))
-            # #weight = weight/np.sqrt(weight.shape[-2]*weight.shape[-1])
-            # #weight = self.complex_norm_polar(weight, 1.0)
-            # self.weight.data = weight
             init.kaiming_normal_(self.weight.data)
         # elif self.mode == "sigma":
         #     S = init.kaiming_normal_(
@@ -360,31 +332,6 @@ class FourierConv2d(ONNBaseLayer):
         """weight = merge_chunks(weight)[: self.out_channels, : self.in_channels_flat].view(
             -1, self.in_channels, self.kernel_size[0], self.kernel_size[1]
         )"""
-        # Note1: For linear convolution, both input and filter have to have dimensions (N+M-1),
-        # where, N=input_size, M=filter_size
-        # Note2: F.pad takes input in the order (last dim, second last dim), so take shapes accordingly
-        # inSize = (x.shape[-1], x.shape[-2])
-        # wSize = (weight.shape[-1], weight.shape[-2])
-        # (M-1)//2 and (N-1)//2, use floor and ceil to handle odd numbered sizes
-        # inPadDims = (int(np.floor((wSize[0]-1)/2)), int(np.ceil((wSize[0]-1)/2)), 
-        #              int(np.floor((wSize[1]-1)/2)), int(np.ceil((wSize[1]-1)/2)))
-        # wPadDims = (int(np.ceil((inSize[0]-wSize[0])/2)), int(np.floor((inSize[0]-wSize[0])/2)), 
-        #              int(np.ceil((inSize[1]-wSize[1])/2)), int(np.floor((inSize[1]-wSize[1])/2)))
-        #wPadDims = (int((inSize[0]-wSize[0]+1)//2), int((inSize[0]-wSize[0])//2), 
-        #             int((inSize[1]-wSize[1]+1)//2), int((inSize[1]-wSize[1])//2))
-        # zero-pad the input and weights in the last two dimensions
-        #x = pad(x, inPadDims, "constant", 0)
-        # weight = pad(weight, wPadDims, "constant", 0)
-        # weight = torch.fft.fftshift(torch.fft.fft2(torch.fft.ifftshift(weight)))
-        #weight = self.complex_norm_polar(weight, 1.0)
-        #weight /= np.sqrt(self.kernel_size[0]*self.kernel_size[1])
-        #weight = weight/torch.mean(torch.abs(weight))
-        #weight = weight/torch.max(torch.abs(weight))
-        # Multiply in loops over input mini-batches and weight out_channels
-        #x_out = torch.zeros((batchSize, self.out_channels, self.pool_size[0], self.pool_size[1]),
-        #                    dtype=self.dtype).to(self.device)
-        #x_out = torch.zeros((batchSize, self.out_channels, inSize[1], inSize[0]),
-        #                    dtype=self.dtype).to(self.device)
 
         # Reshape x and weights to (bacth_size, output_channels, input_channels, x, y) to avoid loops and take
         #       advantage of pytorch matrix multiplication optimizations

@@ -163,7 +163,7 @@ class CRelu(ONNBaseLayer):
         '''
         Z: Input tensor
         '''
-        Z = relu(Z.real).type(torch.complex128) + 1j * relu(Z.imag).type(torch.complex128)
+        Z = relu(Z.real).type(torch.complex64) + 1j * relu(Z.imag).type(torch.complex64)
         if self.bias is not None:
             Z = Z + self.bias.unsqueeze(0)
 

@@ -120,8 +120,8 @@ class FourierConv2d(ONNBaseLayer):
 
     def complex_norm_polar(self, x, upper):
         '''
-        Normalization for complex numbers. Reduces the magnitude of input to fit them
-        within a unit circle in the complex plane
+        Normalization for complex numbers. Scales the magnitude of input to fit them
+        on a unit circle in the complex plane
         '''
         rad = torch.abs(x)
         max_rad = torch.max(rad)
@@ -348,15 +348,6 @@ class FourierConv2d(ONNBaseLayer):
         x_out = x[:,:,:,poolStartIdx[0]:poolEndIdx[0],poolStartIdx[1]:poolEndIdx[1]] * weight
         x_out = torch.sum(x_out, dim=2, dtype=self.dtype)
 
-        # for k in range(batchSize):
-        #     for i in range(self.out_channels):
-        #         #fConvOut = torch.zeros((x.shape[-2], x.shape[-1]), dtype=self.dtype).to(self.device)
-        #         for j in range(self.in_channels):
-        #             x_out[k,i,:,:] += weight[i,j,:,:]*x[k,j,:,:]
-                    #fConvOut += weight[i,j,:,:]*x[k,j,:,:]
-                    #x_out[k,i,:,:] += weight[i,j,:,:]*x[k,j,poolStartIdx[0]:poolEndIdx[0],poolStartIdx[1]:poolEndIdx[1]]
-                # Crop the convolved outputs for spectral pooling
-                #x_out[k,i,:,:] = fConvOut[poolStartIdx[0]:poolEndIdx[0],poolStartIdx[1]:poolEndIdx[1]]
         if self.photodetect:
             x_out = x_out.square()
 

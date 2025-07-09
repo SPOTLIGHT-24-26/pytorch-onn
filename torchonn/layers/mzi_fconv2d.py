@@ -20,45 +20,45 @@ from typing import Any, Dict, Tuple, Optional
 
 class FourierConv2d(ONNBaseLayer):
     '''
-    Fourier convolutional layer or layer of 2D array of MZIs in attenuation mode
-    i.e., MZI with only one input and ouput and the bottom I/O ports attenuated.
+    - Fourier convolutional layer or layer of 2D array of:
+        1) Single-mode MZIs with phase shifters in both arms (2 2-to-1 combiners, 2 phase shifters),
+        2) aMZI from Lionix (2 MMI, 1 PS)
+    - This layer sums the features over in_channels and performs frequency-domain convolution with out_channels filters
+        - It is done to mimic combiner circuits before and after 
     Note: This layer also performs spectral pooling
-    Inputs: 
-        in_channels (int) - 
-            Number of channels in input
+    Inputs:
+        in_channels (int) -
+            Number of input channels
         out_channels (int) -
             Number of channels in output
-        kernel_size (int, Tuple(int, int))- 
-            Size of the kernels
         pool_size (int, Tuple(int, int)) - 
             desired size of the output image
+        miniblock (int) - 
+            size of miniblock
     '''
     __constants__ = [
         "in_channels",
         "out_channels",
-        "kernel_size",
         "pool_size",
-        #"miniblock"
+        "miniblock"
     ]
     __annotations__ = {"bias": Optional[torch.Tensor]}
 
     _in_channels: int
     out_channels: int
-    kernel_size: Tuple[int, ...]
     pool_size: Tuple[int, ...]
     weight: Tensor
     bias: Optional[Tensor]
-    #miniblock: int
+    miniblock: int
     dtype: torch.dtype
 
     def __init__(
             self,
             in_channels: int,
             out_channels: int,
-            kernel_size: _size,
             pool_size: _size,
             bias: bool = False,
-            #miniblock: int = 4,
+            miniblock: int = 4,
             dtype: torch.dtype = torch.float64,
             mode: str  = "weight",
             photodetect: bool = True,
@@ -67,13 +67,12 @@ class FourierConv2d(ONNBaseLayer):
         super(FourierConv2d, self).__init__(device=device)
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = _pair(kernel_size)
         self.pool_size = _pair(pool_size)
         self.dtype = dtype
-        #self.miniblock = miniblock
-        #self.in_channels_flat = self.in_channels * self.kernel_size[0] * self.kernel_size[1]
-        #self.grid_dim_x = int(np.ceil(self.in_channels_flat / miniblock))
-        #self.grid_dim_y = int(np.ceil(self.out_channels / miniblock))
+        self.miniblock = miniblock
+        self.in_channels_flat = self.in_channels * self.pool_size[0] * self.pool_size[1]
+        self.grid_dim_x = int(np.ceil(self.in_channels_flat / miniblock))
+        self.grid_dim_y = int(np.ceil(self.out_channels / miniblock))
         self.mode = mode
         assert mode in {"weight", "phase"}, logger.error(
             f"Mode not supported. Expected one from (weight, phase) but got {mode}."
@@ -118,27 +117,12 @@ class FourierConv2d(ONNBaseLayer):
 
         self.reset_parameters()
 
-    def complex_norm_polar(self, x, upper):
-        '''
-        Normalization for complex numbers. Scales the magnitude of input to fit them
-        on a unit circle in the complex plane
-        '''
-        rad = torch.abs(x)
-        max_rad = torch.max(rad)
-        norm_rad = rad*upper/max_rad
-        x_angle = x.angle()
-        return torch.view_as_complex(torch.stack([norm_rad*torch.cos(x_angle), norm_rad*torch.sin(x_angle)], dim=-1))
-
     def build_parameters(self, mode: str = "weight") -> None:
         # weight mode [out_channels, in_channels, pool_size[0], pool_size[1]]
-        weight = torch.zeros((self.out_channels, self.in_channels, self.pool_size[0], 
-                              self.pool_size[1]), dtype=self.dtype).to(self.device)
-
-        #weight = torch.empty((self.out_channels, self.in_channels, self.kernel_size[0], 
-        #                      self.kernel_size[1]), dtype=self.dtype).to(self.device)
-
-        # Sigma mode (analogous to USV mode in MZIs in regular configuration)
-        #S = torch.empty((self.grid_dim_y, self.grid_dim_x, 1, self.miniblock), dtype=self.dtype).to(self.device)
+        #weight = torch.zeros((self.out_channels, self.in_channels, self.pool_size[0], 
+        #                      self.pool_size[1]), dtype=self.dtype).to(self.device)
+        weight = torch.zeros((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock),
+                             dtype=self.dtype, device=self.device)
 
         # phase mode
         phase_S = torch.empty((self.out_channels, self.in_channels, self.pool_size[0], 
@@ -147,15 +131,6 @@ class FourierConv2d(ONNBaseLayer):
         #                      self.kernel_size[1]), dtype=self.dtype).to(self.device)
         # TIA gain
         S_scale = torch.empty((self.out_channels, self.in_channels, 1, 1), dtype=self.dtype).to(self.device).float()
-
-        """ weight = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
-        # Sigma mode (analogous to USV mode in MZIs in regular configuration)
-        #S = torch.empty((self.grid_dim_y, self.grid_dim_x, 1, self.miniblock), dtype=self.dtype).to(self.device)
-        # phase mode
-        phase_S = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, self.miniblock), dtype=self.dtype).to(self.device)
-        # TIA gain
-        S_scale = torch.empty((self.grid_dim_y, self.grid_dim_x, self.miniblock, 1), dtype=self.dtype).to(self.device).float()
-        """
 
         if mode == "weight":
             self.weight = Parameter(weight)
@@ -179,18 +154,6 @@ class FourierConv2d(ONNBaseLayer):
     def reset_parameters(self) -> None:
         if self.mode == "weight":
             init.kaiming_normal_(self.weight.data)
-        # elif self.mode == "sigma":
-        #     S = init.kaiming_normal_(
-        #         torch.empty(
-        #             self.grid_dim_y,
-        #             self.grid_dim_x,
-        #             1,
-        #             self.miniblock,
-        #             dtype=self.dtype,
-        #             device=self.device
-        #         )
-        #     )
-        #     self.S.data.copy_(S)
         elif self.mode == "phase":
             S = init.kaiming_normal_(
                 torch.empty(
@@ -201,14 +164,6 @@ class FourierConv2d(ONNBaseLayer):
                     dtype=self.dtype,
                     device=self.device
                 )
-                # torch.empty(
-                #     self.grid_dim_y,
-                #     self.grid_dim_x,
-                #     self.miniblock,
-                #     self.miniblock,
-                #     dtype=self.dtype,
-                #     device=self.device
-                # )
             )
             self.S_scale.data.copy_(S.abs().max(dim=-1, keepdim=True)[0])
             self.phase_S.data.copy_(S.div(self.S_scale.data).acos())
@@ -217,11 +172,6 @@ class FourierConv2d(ONNBaseLayer):
         
         if self.bias is not None:
             init.uniform_(self.bias, 0, 0)
-
-    """ def build_weight_from_sigma(self, S: Tensor) -> Tensor:
-        weight = S
-        self.weight.data.copy_(weight)
-        return weight """
     
     def build_weight_from_phase(self, phase_S: Tensor) -> Tensor:
         '''
@@ -235,24 +185,6 @@ class FourierConv2d(ONNBaseLayer):
         
         return weight
     
-    """ def build_phase_from_sigma(self, S: Tensor) -> Tuple[Tensor, Tensor]:
-        self.S_scale.data.copy_(S.data.abs().max(dim=-1, keepdim=True)[0])
-        self.phase_S.data.copy_(S.data.div(self.S_scale.data).acos())
-
-        return self.phase_S, self.S_scale """
-    
-    """ def build_sigma_from_phase(self, phase_S: Tensor, S_scale: Tensor) -> Tensor:
-        '''
-        While the MZI implementations take an update list parameter, here we have only "phase_S"
-        Hence the update_list argument is not necessary
-        '''
-        self.S.data.copy_(phase_S.data.cos().mul_(S_scale))
-        return self.S """
-    
-    """ def build_sigma_from_weight(self, weight:Tensor) -> Tensor:
-        self.S.data.copy_(weight)
-        return self.S """
-    
     def build_phase_from_weight(self, weight: Tensor) -> Tuple[Tensor, Tensor]:
         self.S_scale.data.copy_(weight.data.abs().max(dim=-1, keepdim=True)[0])
         self.phase_S.data.copy_(weight.data.div(self.S_scale.data).acos())
@@ -264,9 +196,6 @@ class FourierConv2d(ONNBaseLayer):
         '''
         if src == "weight":
             self.build_phase_from_weight(self.weight)
-        # elif src == "sigma":
-        #     self.build_phase_from_sigma(self.S)
-        #     self.build_weight_from_sigma(self.S)
         elif src == "phase":
             if self.w_bit < 16:
                 phase_S = self.phase_S_quantizer(self.phase_S.data)
@@ -280,9 +209,6 @@ class FourierConv2d(ONNBaseLayer):
     def build_weight(self) -> Tensor:
         if self.mode == "weight":
             weight = self.weight
-        # elif self.mode == "sigma":
-        #     S = self.S
-        #     weight = self.build_weight_from_sigma(S)
         elif self.mode == "phase":
             # not differentiable
             if self.w_bit < 16 or self.gamma_noise_std > 1e-5 or self.crosstalk_factor > 1e-5:
@@ -329,9 +255,9 @@ class FourierConv2d(ONNBaseLayer):
             weight = self.build_weight()
         else:
             weight = self.weight
-        """weight = merge_chunks(weight)[: self.out_channels, : self.in_channels_flat].view(
-            -1, self.in_channels, self.kernel_size[0], self.kernel_size[1]
-        )"""
+        weight = merge_chunks(weight)[: self.out_channels, : self.in_channels_flat].view(
+            -1, self.in_channels, self.pool_size[0], self.pool_size[1]
+        )
 
         # Reshape x and weights to (bacth_size, output_channels, input_channels, x, y) to avoid loops and take
         #       advantage of pytorch matrix multiplication optimizations

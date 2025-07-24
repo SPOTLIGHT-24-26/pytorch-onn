@@ -97,11 +97,12 @@ class FourierConv2d(ONNBaseLayer):
             device: Device = torch.device("cpu")
     ):
         super(FourierConv2d, self).__init__(device=device)
-        self.sum_channels = sum_channels
+        self.in_channels = in_channels
         self.out_channels = out_channels
         self.pool_size = _pair(pool_size)
         self.groups = groups
         self.miniblock = miniblock
+        self.sum_channels = sum_channels
         self.dtype = dtype
 
         # Note: sum_channels and groups != 1 cannot be used together
@@ -109,16 +110,15 @@ class FourierConv2d(ONNBaseLayer):
             f"sum_channels and groups != 1 cannot be used together. "
             f"Got sum_channels={self.sum_channels} and groups={self.groups}."
         )
-        # set groups and in_channels
+        # Handle in_channels and out_channels based on groups
         if self.groups > 1:
-            assert (in_channels % self.groups == 0) and (self.out_channels % self.groups == 0), logger.error(
+            assert (in_channels % self.groups == 0) and (out_channels % self.groups == 0), logger.error(
                 f"Number of input and output channels {in_channels}, {out_channels} must be both divisible by groups {self.groups}."
             )
+            self.in_channels = in_channels
 
         if self.sum_channels:
             self.in_channels = 1
-        else:
-            self.in_channels = in_channels
 
         self.in_channels_flat = self.in_channels * self.pool_size[0] * self.pool_size[1]
         self.grid_dim_x = int(np.ceil(self.in_channels_flat / miniblock))

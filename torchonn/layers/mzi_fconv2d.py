@@ -9,7 +9,6 @@ from torchonn.op.mzi_op import (
     phase_to_voltage,
     voltage_to_phase,
 )
-from torch.nn.functional import pad
 
 import numpy as np
 from pyutils.compute import gen_gaussian_noise, merge_chunks
@@ -27,14 +26,43 @@ class FourierConv2d(ONNBaseLayer):
         - It is done to mimic combiner circuits before and after 
     Note: This layer also performs spectral pooling
     Inputs:
-        in_channels (int) -
-            Number of input channels
-        out_channels (int) -
-            Number of channels in output
-        pool_size (int, Tuple(int, int)) - 
-            desired size of the output image
-        miniblock (int) - 
-            size of miniblock
+        mandatory:
+            x (Tensor) -
+                Input tensor of shape (batch_size, in_channels, height, width)
+            in_channels (int) -
+                Number of input channels
+            out_channels (int) -
+                Number of channels in output
+            pool_size (int, Tuple(int, int)) - 
+                desired size of the output image
+        optional:
+            bias (bool) -
+                if True, add a bias term to the output
+            groups (int) -
+                number of groups to split the input channels into
+            miniblock (int) - 
+                size of miniblock
+            sum_channels (bool) -
+                if True, sum the input channels before convolution
+            dtype (torch.dtype) -
+                data type of the layer parameters, default is torch.float64
+            mode (str) -
+                mode of the layer, either "weight" or "phase"
+            photodetect (bool) -
+                if True, apply photodetection to the output (square the output)
+            device (torch.device) -
+                device to place the layer on, default is CPU
+    Outputs:
+        Tensor of shape (batch_size, out_channels, pool_size[0], pool_size[1])
+    Notes:
+        - The layer supports quantization of input and weight parameters.
+        - The layer supports gamma noise and crosstalk.
+        - The layer supports fast forward mode, which uses precomputed weights.
+        - The layer supports synchronization of parameters from weight to phase and vice versa.
+        - The layer supports loading parameters from a dictionary.
+        - The layer supports setting gamma noise, crosstalk factor, weight bitwidth, and input bitwidth.
+        - The layer supports resetting parameters to their initial values.
+        - The layer supports building weights from phase and vice versa.
     '''
     __constants__ = [
         "in_channels",
@@ -46,10 +74,12 @@ class FourierConv2d(ONNBaseLayer):
 
     _in_channels: int
     out_channels: int
-    pool_size: Tuple[int, ...]
-    weight: Tensor
+    pool_size: Tuple[int, ...]  
     bias: Optional[Tensor]
+    groups: int
     miniblock: int
+    sum_channels: bool
+    weight: Tensor
     dtype: torch.dtype
 
     def __init__(
@@ -58,18 +88,38 @@ class FourierConv2d(ONNBaseLayer):
             out_channels: int,
             pool_size: _size,
             bias: bool = False,
+            groups: int = 1,
             miniblock: int = 4,
+            sum_channels: bool = False,
             dtype: torch.dtype = torch.float64,
             mode: str  = "weight",
             photodetect: bool = True,
             device: Device = torch.device("cpu")
     ):
         super(FourierConv2d, self).__init__(device=device)
-        self.in_channels = in_channels
+        self.sum_channels = sum_channels
         self.out_channels = out_channels
         self.pool_size = _pair(pool_size)
-        self.dtype = dtype
+        self.groups = groups
         self.miniblock = miniblock
+        self.dtype = dtype
+
+        # Note: sum_channels and groups != 1 cannot be used together
+        assert not (self.sum_channels and self.groups != 1), logger.error(
+            f"sum_channels and groups != 1 cannot be used together. "
+            f"Got sum_channels={self.sum_channels} and groups={self.groups}."
+        )
+        # set groups and in_channels
+        if self.groups > 1:
+            assert (in_channels % self.groups == 0) and (self.out_channels % self.groups == 0), logger.error(
+                f"Number of input and output channels {in_channels}, {out_channels} must be both divisible by groups {self.groups}."
+            )
+
+        if self.sum_channels:
+            self.in_channels = 1
+        else:
+            self.in_channels = in_channels
+
         self.in_channels_flat = self.in_channels * self.pool_size[0] * self.pool_size[1]
         self.grid_dim_x = int(np.ceil(self.in_channels_flat / miniblock))
         self.grid_dim_y = int(np.ceil(self.out_channels / miniblock))
@@ -249,6 +299,9 @@ class FourierConv2d(ONNBaseLayer):
             self.build_weight(update_list=param_dict)
 
     def forward(self, x: Tensor) -> Tensor:
+        # If sum_channels, sum x
+        if self.sum_channels:
+            x = torch.sum(x, dim=1, keepdim=True)
         if self.in_bit < 16:
             x = self.input_quantizer(x)
         if not self.fast_forward_flag or self.weight is None:

@@ -110,19 +110,20 @@ class FourierConv2d(ONNBaseLayer):
             f"sum_channels and groups != 1 cannot be used together. "
             f"Got sum_channels={self.sum_channels} and groups={self.groups}."
         )
-        # Handle in_channels and out_channels based on groups
-        if self.groups > 1:
-            assert (in_channels % self.groups == 0) and (out_channels % self.groups == 0), logger.error(
-                f"Number of input and output channels {in_channels}, {out_channels} must be both divisible by groups {self.groups}."
-            )
-            self.in_channels = in_channels
-
         if self.sum_channels:
             self.in_channels = 1
+        # Handle in_channels and out_channels based on groups
+        if self.groups > 1:
+            assert (self.in_channels % self.groups == 0) and (self.out_channels % self.groups == 0), logger.error(
+                f"Number of input and output channels {in_channels}, {out_channels} must be both divisible by groups {self.groups}."
+            )
+            
+        self.group_size = self.in_channels // self.groups
+        self.out_filters = self.out_channels // self.groups
 
-        self.in_channels_flat = self.in_channels * self.pool_size[0] * self.pool_size[1]
+        self.in_channels_flat = self.group_size * self.pool_size[0] * self.pool_size[1]
         self.grid_dim_x = int(np.ceil(self.in_channels_flat / miniblock))
-        self.grid_dim_y = int(np.ceil(self.out_channels / miniblock))
+        self.grid_dim_y = int(np.ceil(self.out_filters / miniblock))
         self.mode = mode
         assert mode in {"weight", "phase"}, logger.error(
             f"Mode not supported. Expected one from (weight, phase) but got {mode}."
@@ -308,18 +309,18 @@ class FourierConv2d(ONNBaseLayer):
             weight = self.build_weight()
         else:
             weight = self.weight
-        weight = merge_chunks(weight)[: self.out_channels, : self.in_channels_flat].view(
-            -1, self.in_channels, self.pool_size[0], self.pool_size[1]
+        weight = merge_chunks(weight)[: self.out_filters, : self.in_channels_flat].view(
+            -1, self.group_size, self.pool_size[0], self.pool_size[1]
         )
 
         # Reshape x and weights to (bacth_size, output_channels, input_channels, x, y) to avoid loops and take
         #       advantage of pytorch matrix multiplication optimizations
         # Sum the output over input_channels to get final shape (bacth_size, output_channels, x, y)
         batchSize = x.shape[0]
-        x = x.repeat(1, self.out_channels, 1, 1)
-        x = torch.reshape(x, (batchSize, self.out_channels, self.in_channels,x.size(dim=-2),x.size(dim=-1)))
-        weight = weight.repeat(batchSize,1,1,1)
-        weight = torch.reshape(weight, (batchSize, self.out_channels, self.in_channels, weight.size(dim=-2), weight.size(dim=-1)))
+        x = x.repeat(1, self.out_filters, 1, 1)
+        x = torch.reshape(x, (batchSize, self.groups*self.out_filters, self.group_size, x.size(dim=-2),x.size(dim=-1)))
+        weight = weight.repeat(batchSize*self.groups,1,1,1)
+        weight = torch.reshape(weight, (batchSize, self.groups*self.out_filters, self.group_size, weight.size(dim=-2), weight.size(dim=-1)))
         # Select only subset of inputs within pooling range for Fourier convolution
         poolStartIdx = (int(np.ceil((x.size(dim=-2)-self.pool_size[0])/2)), int(np.ceil((x.size(dim=-1)-self.pool_size[1])/2)))
         poolEndIdx = (poolStartIdx[0]+self.pool_size[0], poolStartIdx[1]+self.pool_size[1])

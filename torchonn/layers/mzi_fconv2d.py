@@ -44,6 +44,7 @@ class FourierConv2d(ONNBaseLayer):
                 size of miniblock
             sum_channels (bool) -
                 if True, sum the input channels before convolution
+                ***note: This is a legacy property***
             dtype (torch.dtype) -
                 data type of the layer parameters, default is torch.float64
             mode (str) -
@@ -72,7 +73,7 @@ class FourierConv2d(ONNBaseLayer):
     ]
     __annotations__ = {"bias": Optional[torch.Tensor]}
 
-    _in_channels: int
+    in_channels: int
     out_channels: int
     pool_size: Tuple[int, ...]  
     bias: Optional[Tensor]
@@ -205,8 +206,9 @@ class FourierConv2d(ONNBaseLayer):
     def reset_parameters(self) -> None:
         if self.mode == "weight":
             init.kaiming_normal_(self.weight.data)
+            #init.normal_(self.weight.data, mean=0, std=0.01)
         elif self.mode == "phase":
-            S = init.kaiming_normal_(
+            S = init.xavier_uniform_(
                 torch.empty(
                     self.out_channels,
                     self.in_channels,

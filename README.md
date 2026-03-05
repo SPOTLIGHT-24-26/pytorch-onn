@@ -58,4 +58,4 @@ or
 ```
 
 ## Usage
-Please see [pytorch-onn](https://github.com/JeremieMelo/pytorch-onn) for usage instructions and examples
+Please see [torch-onn](https://github.com/JeremieMelo/pytorch-onn) for usage instructions and examples
